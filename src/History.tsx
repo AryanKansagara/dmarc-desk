@@ -23,7 +23,7 @@ export default function History({ project, update }: TabProps) {
     <>
       <div className="panel">
         <div className="panel-head"><h2>Aligned share of legitimate mail, by week</h2></div>
-        <TrendChart weekly={snaps.map(s => ({ week: s.period, readiness: s.readiness, volume: s.total }))} threshold={project.threshold} height={190} />
+        <TrendChart weekly={snaps.map(s => ({ week: s.period, readiness: s.readiness, volume: s.total }))} threshold={project.threshold} height={220} width={1100} />
       </div>
       <div className="panel">
         <div className="panel-head">

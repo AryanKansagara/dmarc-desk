@@ -14,7 +14,7 @@ export function GradeCard({ check, compact = false }: { check: DomainCheck; comp
         <div className={`grade-letter g-${check.grade}`} aria-label={`Grade ${check.grade}`}>{check.grade}</div>
         <div className="grade-meta">
           <code className="grade-domain">{check.domain}</code>
-          <div className="small muted">{check.score}/100 · via {check.via} DNS-over-HTTPS</div>
+          <div className="small muted">{check.score}/100 · {check.via === 'Synthetic zone' ? 'synthetic zone, no network' : `via ${check.via} DNS-over-HTTPS`}</div>
           {check.capped && <div className="small warn-text">{check.capped}</div>}
         </div>
       </div>

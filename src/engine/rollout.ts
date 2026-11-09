@@ -49,7 +49,12 @@ export function planRollout(inp: RolloutInput): { stages: Stage[]; current: numb
     if (inp.reporters < 2) blockers.push(`Reports from ${inp.reporters} receiver so far; wait for at least two (Google and Microsoft usually arrive within 48 hours)`)
     if (recent.length < 2) blockers.push('Need two weeks of reports')
     const low = recent.filter(w => w.readiness < threshold)
-    if (low.length) blockers.push(`Readiness ${Math.round(latest * 1000) / 10}% is below ${threshold * 100}% (fix the failing senders first)`)
+    if (low.length) {
+      const worst = Math.min(...low.map(w => w.readiness))
+      blockers.push(low.length === recent.length || low.at(-1) === recent.at(-1)
+        ? `Readiness ${Math.round(latest * 1000) / 10}% is below ${threshold * 100}% (fix the failing senders first)`
+        : `Readiness ${Math.round(latest * 1000) / 10}% now, but ${Math.round(worst * 1000) / 10}% the week before: it needs two weeks in a row at or above ${threshold * 100}%`)
+    }
   }
   if (inp.unreviewed) blockers.push(`${inp.unreviewed} significant sender${inp.unreviewed > 1 ? 's' : ''} not identified; mark each legitimate or unauthorized`)
   if (!inp.rua.length) blockers.push('Add an rua= address so you keep seeing reports while enforcing')

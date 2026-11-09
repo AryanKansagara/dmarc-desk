@@ -12,8 +12,9 @@ interface FLink { from: string; to: string; value: number; color: string }
 export function FlowDiagram({ a, maxSources = 5, compact = false }: { a: Analysis; maxSources?: number; compact?: boolean }) {
   const [hover, setHover] = useState<string | null>(null)
   if (!a.total) return null
-  const top = a.senders.slice(0, maxSources)
-  const rest = a.senders.slice(maxSources)
+  // Small sources share one "other" node so labels never collide.
+  const top = a.senders.filter(s => s.share >= 0.03).slice(0, maxSources)
+  const rest = a.senders.filter(s => !top.includes(s))
   const src: FNode[] = top.map(s => ({ id: s.key, label: s.name, sub: `${fmtPct(s.share)} · ${fmtPct(s.volume ? s.pass / s.volume : 0)} pass`, value: s.volume, color: VERDICT_COLOR[s.verdict], col: 0 }))
   const links: FLink[] = []
   const auth = { dkim: 0, spf: 0, none: 0 }
@@ -44,8 +45,8 @@ export function FlowDiagram({ a, maxSources = 5, compact = false }: { a: Analysi
   if (auth.spf) links.push({ from: 'spf', to: 'pass', value: auth.spf, color: 'var(--warn)' })
   if (auth.none) links.push({ from: 'none', to: 'fail', value: auth.none, color: 'var(--bad)' })
 
-  const W = 720, H = compact ? 280 : 340, NW = 10, GAP = 14, PAD = 6
-  const colX = [compact ? 150 : 190, compact ? 400 : 440, W - (compact ? 120 : 130)]
+  const W = compact ? 720 : 1040, H = compact ? 280 : 360, NW = 10, GAP = 14, PAD = 6
+  const colX = compact ? [150, 400, W - 120] : [220, 600, W - 150]
   const nodes = [src, mid, end]
   // One scale for every column so a ribbon has the same width at both ends.
   const scale = (H - PAD * 2 - GAP * (Math.max(...nodes.map(c => c.length)) - 1)) / a.total
@@ -81,8 +82,8 @@ export function FlowDiagram({ a, maxSources = 5, compact = false }: { a: Analysi
     return (
       <g key={n.id} onMouseEnter={() => setHover(n.id)} onMouseLeave={() => setHover(null)} className="flow-node">
         <rect x={colX[n.col]} y={n.y} width={NW} height={n.h} rx={2} fill={n.color} />
-        <text x={x} y={cy - (n.sub ? 3 : -4)} textAnchor={left ? 'end' : 'start'} className="flow-label">{n.label.length > 26 ? n.label.slice(0, 25) + '…' : n.label}</text>
-        {n.sub && <text x={x} y={cy + 12} textAnchor={left ? 'end' : 'start'} className="flow-sub">{n.sub}</text>}
+        <text x={x} y={cy - (n.sub && n.h! >= 20 ? 3 : -4)} textAnchor={left ? 'end' : 'start'} className="flow-label">{n.label.length > 26 ? n.label.slice(0, 25) + '…' : n.label}</text>
+        {n.sub && n.h! >= 20 && <text x={x} y={cy + 12} textAnchor={left ? 'end' : 'start'} className="flow-sub">{n.sub}</text>}
         {!n.sub && n.col === 1 && <text x={x} y={cy + 18} className="flow-sub">{fmtN(n.value)}</text>}
       </g>
     )
@@ -103,17 +104,17 @@ export function FlowDiagram({ a, maxSources = 5, compact = false }: { a: Analysi
 }
 
 /** Weekly readiness line with the rollout threshold. */
-export function TrendChart({ weekly, threshold, height = 160 }: { weekly: { week: string; readiness: number; volume: number }[]; threshold: number; height?: number }) {
+export function TrendChart({ weekly, threshold, height = 160, width = 600 }: { weekly: { week: string; readiness: number; volume: number }[]; threshold: number; height?: number; width?: number }) {
   const pts = weekly.filter(w => w.volume > 0)
   if (pts.length < 2) return <p className="muted small">Import reports from at least two weeks to see a trend.</p>
-  const W = 600, H = height, L = 36, R = 10, T = 10, B = 26
+  const W = width, H = height, L = 36, R = 26, T = 14, B = 26
   const min = Math.max(0, Math.floor(Math.min(...pts.map(p => p.readiness), threshold) * 10) / 10 - 0.05)
   const x = (i: number) => L + (i / (pts.length - 1)) * (W - L - R)
   const y = (v: number) => T + (1 - (v - min) / (1 - min)) * (H - T - B)
   const line = pts.map((p, i) => `${i ? 'L' : 'M'}${x(i)},${y(p.readiness)}`).join(' ')
   return (
     <svg className="trend" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Readiness by week, from ${fmtPct(pts[0].readiness, 1)} to ${fmtPct(pts.at(-1)!.readiness, 1)}`}>
-      {[min, (min + 1) / 2, 1].map(v => <g key={v}><line x1={L} x2={W - R} y1={y(v)} y2={y(v)} className="grid" /><text x={L - 6} y={y(v) + 4} textAnchor="end" className="axis">{Math.round(v * 100)}%</text></g>)}
+      {[min, Math.round((min + 1) / 2 * 20) / 20, 1].map(v => <g key={v}><line x1={L} x2={W - R} y1={y(v)} y2={y(v)} className="grid" /><text x={L - 6} y={y(v) + 4} textAnchor="end" className="axis">{Math.round(v * 100)}%</text></g>)}
       <line x1={L} x2={W - R} y1={y(threshold)} y2={y(threshold)} className="threshold" />
       <text x={W - R} y={y(threshold) - 5} textAnchor="end" className="axis accent">target {Math.round(threshold * 1000) / 10}%</text>
       <path d={`${line} L${x(pts.length - 1)},${H - B} L${x(0)},${H - B} Z`} className="area" />
