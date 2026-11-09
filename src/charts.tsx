@@ -135,7 +135,7 @@ export function DayBars({ days }: { days: Analysis['days'] }) {
         const fail = d.volume - d.pass - d.suspicious
         return (
           <div key={d.day} className="daybar" title={`${fmtDay(d.day)}: ${fmtN(d.pass)} pass, ${fmtN(Math.max(0, fail))} fail, ${fmtN(d.suspicious)} unknown/spoofing`}>
-            <div className="stack" style={{ height: `${(d.volume / max) * 100}%` }}>
+            <div className="dstack" style={{ height: `${(d.volume / max) * 100}%` }}>
               <span style={{ flex: d.suspicious, background: 'var(--c-spoof)' }} />
               <span style={{ flex: Math.max(0, fail), background: 'var(--bad)' }} />
               <span style={{ flex: d.pass, background: 'var(--good)' }} />

@@ -506,8 +506,8 @@ tbody tr:hover { background: var(--accent-subtle); }
 .trend .dot { fill: var(--surface); stroke: var(--ink); stroke-width: 2; }
 .daybars { display: flex; align-items: flex-end; gap: 2px; height: 90px; }
 .daybar { flex: 1; height: 100%; display: flex; align-items: flex-end; min-width: 0; }
-.daybar .stack span { display: block; min-height: 0; }
-.daybar .stack { width: 100%; display: flex; flex-direction: column; border-radius: 2px 2px 0 0; overflow: hidden; min-height: 2px; transition: height .5s var(--ease); }
+.daybar .dstack span { display: block; min-height: 0; }
+.daybar .dstack { width: 100%; display: flex; flex-direction: column; border-radius: 2px 2px 0 0; overflow: hidden; min-height: 2px; transition: height .5s var(--ease); }
 .sender-list { display: grid; gap: 8px; }
 .sender { border: 1px solid var(--line); border-radius: var(--r-xl); background: var(--surface); transition: border-color .2s, box-shadow .2s; }
 .sender.open { border-color: var(--border); box-shadow: var(--shadow); }
@@ -603,3 +603,4 @@ tbody tr:hover { background: var(--accent-subtle); }
 @media print { .flow-pulse { display: none; } .sender-head { break-inside: avoid; } }
 
 .code pre { white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; }
+@media (max-width: 720px) { .window-body .flow { overflow-x: auto; } .window-body .flow svg { min-width: 560px; } }
