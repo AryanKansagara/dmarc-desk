@@ -4,9 +4,9 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Snapshot } from './engine/analyze.ts'
 import { clearTombstones, getData, getProjects, loadProjects, onProjectChange, putData, saveProject, tombstones, type Dataset, type Project } from './store.ts'
 
-export const APP_ID = 'oncall-health'
-/** Raw incident lists above this stay on the device; people, settings, fixes and snapshots always sync. */
-export const RAW_SYNC_LIMIT = 1_500_000
+export const APP_ID = 'dmarc-desk'
+/** Raw report sets above this stay on the device; settings, sender decisions, DNS results and snapshots always sync. */
+export const RAW_SYNC_LIMIT = 2_000_000
 
 const URL_ = import.meta.env.VITE_SUPABASE_URL as string | undefined
 const KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined

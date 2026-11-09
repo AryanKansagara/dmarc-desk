@@ -225,7 +225,7 @@ function buildSender(key: string, list: RowAnalysis[], total: number, override?:
   else if (esp) s.verdict = 'legit'
   else if (forwardedVol > s.volume / 2) s.verdict = 'forwarder'
   else s.verdict = passShare >= 0.5 ? 'legit' : 'suspicious'
-  s.name = esp ? esp.name : s.verdict === 'forwarder' ? `Forwarder (${host})` : key.startsWith('host:') ? host : `Unknown (${host})`
+  s.name = esp ? esp.name : s.verdict === 'forwarder' ? `Forwarder (${host})` : key.startsWith('host:') ? (host === orgDomain(s.from) ? `Your server (${s.ips[0].ptr?.replace(/\.$/, '')})` : host) : `Unknown (${host})`
   s.fixes = fixesFor(s)
   return s
 }

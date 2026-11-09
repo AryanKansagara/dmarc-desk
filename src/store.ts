@@ -1,41 +1,53 @@
 import { useSyncExternalStore } from 'react'
-import type { RotaInput, Snapshot } from './engine/analyze.ts'
-import type { Config, Incident } from './engine/types.ts'
-import type { Format } from './engine/csv.ts'
-import { DEFAULT_POLICY } from './engine/sample.ts'
+import type { Report } from './engine/aggregate.ts'
+import type { Override, Snapshot } from './engine/analyze.ts'
+import type { DomainCheck } from './engine/checks.ts'
 
-export type Dataset = Incident[]
+export type Dataset = Report[]
 
 export interface ImportMeta {
   id: string
-  kind: Format
   fileName: string
+  reports: number
   rows: number
+  messages: number
   skipped: number
   at: number
 }
 
+export interface SpfPlan { includes: string[]; ip4: string[]; ip6: string[]; mx: boolean; a: boolean; all: '-all' | '~all' }
+
 export interface Project {
   id: string
   name: string
+  domain: string
   createdAt: number
   updatedAt: number
-  config: Config
   snapshots: Snapshot[]
   imports: ImportMeta[]
-  /** Built-in synthetic account; its data is regenerated instead of stored. */
+  /** Built-in synthetic domain; its reports are regenerated instead of stored. */
   sampleId?: string
-  /** Rotation simulator inputs */
-  rota?: RotaInput
-  /** Compensation: on-call weeks per person when the observed count is wrong */
-  weeks?: Record<string, number>
-  /** True when this device has no copy of the raw data (synced from another device). */
+  /** Sender key -> user verdict */
+  overrides: Record<string, Override>
+  /** Extra DKIM selectors to check */
+  selectors: string[]
+  /** Reverse DNS cache for source IPs */
+  ptr: Record<string, string | null>
+  /** Last live DNS check */
+  dns?: DomainCheck
+  /** Mailbox for aggregate reports, used in generated records */
+  rua: string
+  /** When the current DMARC policy was published (rollout planner) */
+  policySince?: number
+  threshold: number
+  spf?: SpfPlan
+  /** True when this device has no copy of the raw reports (synced from another device). */
   dataMissing?: boolean
 }
 
 // ---------- Tiny IndexedDB wrapper (falls back to memory in private modes) ----------
 
-const DB = 'oncall-health'
+const DB = 'dmarc-desk'
 let dbp: Promise<IDBDatabase | null> | null = null
 function db(): Promise<IDBDatabase | null> {
   return dbp ??= new Promise(res => {
@@ -133,7 +145,7 @@ export const putData = (id: string, ds: Dataset) => idbPut('data', ds, id)
 export const uuid = () => crypto.randomUUID()
 
 // Tombstones keep a project deleted offline from coming back on the next sync.
-const TOMB = 'oncall-health.tombstones'
+const TOMB = 'dmarc-desk.tombstones'
 export const tombstones = (): string[] => { try { return JSON.parse(localStorage.getItem(TOMB) ?? '[]') } catch { return [] } }
 const addTombstone = (id: string) => localStorage.setItem(TOMB, JSON.stringify([...new Set([...tombstones(), id])]))
 const removeTombstone = (id: string) => localStorage.setItem(TOMB, JSON.stringify(tombstones().filter(x => x !== id)))
@@ -141,16 +153,10 @@ export const clearTombstones = (ids: string[]) => localStorage.setItem(TOMB, JSO
 
 // ---------- App defaults (settings page) ----------
 
-export interface Defaults { tz: string; sleepStart: number; sleepEnd: number; autoResolveMin: number; flapWindowMin: number; workStart: number; workEnd: number }
-const DEF_KEY = 'oncall-health.defaults'
-const localTz = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC' } catch { return 'UTC' } }
+export interface Defaults { ruaLocal: string; threshold: number; selectors: string; resolver: 'cloudflare' | 'google' }
+const DEF_KEY = 'dmarc-desk.defaults'
 export function getDefaults(): Defaults {
-  const base: Defaults = { tz: localTz(), sleepStart: 22, sleepEnd: 7, autoResolveMin: 5, flapWindowMin: 60, workStart: 9, workEnd: 17.5 }
+  const base: Defaults = { ruaLocal: 'dmarc', threshold: 0.98, selectors: '', resolver: 'cloudflare' }
   try { return { ...base, ...JSON.parse(localStorage.getItem(DEF_KEY) ?? '{}') } } catch { return base }
 }
 export const setDefaults = (d: Defaults) => localStorage.setItem(DEF_KEY, JSON.stringify(d))
-
-export function blankConfig(): Config {
-  const d = getDefaults()
-  return { people: {}, defaultTz: d.tz, sleepStart: d.sleepStart, sleepEnd: d.sleepEnd, autoResolveMin: d.autoResolveMin, flapWindowMin: d.flapWindowMin, flapMinFirings: 3, applied: [], policy: { ...DEFAULT_POLICY } }
-}

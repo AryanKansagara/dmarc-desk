@@ -27,6 +27,8 @@ export interface Report {
   domain: string
   policy: { p: string; sp: string; pct: number; adkim: 'r' | 's'; aspf: 'r' | 's' }
   rows: Row[]
+  /** Import batch this report came from */
+  src?: string
 }
 
 export interface Issue { line: number; level: 'error' | 'warn'; msg: string }
