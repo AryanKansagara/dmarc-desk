@@ -72,7 +72,7 @@ export default function Workspace() {
           <article className="onboard-card">
             <div className="eyebrow">Your domain</div>
             <h2>Check your domain and import reports</h2>
-            <p>Enter your domain for a live DNS check (SPF, DKIM, DMARC, MTA-STS, TLS-RPT, BIMI, DNSSEC). Then drop in the aggregate reports receivers email you: <code>.xml</code>, <code>.xml.gz</code> or <code>.zip</code>, as many as you like.</p>
+            <p>Enter your domain for a live DNS check (SPF, DKIM, DMARC, MTA-STS, TLS-RPT, BIMI, DNSSEC). Then drop in the aggregate reports receivers email you: <code>.xml</code>, <code>.xml.gz</code>, <code>.zip</code>, or the emails themselves as <code>.eml</code> / <code>.mbox</code>, as many as you like.</p>
             {addForm}
             <div className="row gap wrap" style={{ marginTop: 14 }}>
               <Link href="/docs#get-reports" className="btn ghost sm">How to get reports</Link>

@@ -40,7 +40,7 @@ export default function DataTab({ project, ds, update }: TabProps) {
     let i = 0
     for (const f of files) {
       setBusy(`Reading ${++i} of ${files.length}: ${f.name}`)
-      if (f.size > 50_000_000) { out.push({ file: f.name, entry: f.name, report: null, issues: [{ line: 0, level: 'error', msg: 'Over 50 MB; split the export.' }] }); continue }
+      if (f.size > 300_000_000) { out.push({ file: f.name, entry: f.name, report: null, issues: [{ line: 0, level: 'error', msg: 'Over 300 MB; export a shorter date range.' }] }); continue }
       try {
         for (const e of await unpack(f.name, new Uint8Array(await f.arrayBuffer()))) {
           const r = parseAggregate(e.text)
@@ -95,16 +95,16 @@ export default function DataTab({ project, ds, update }: TabProps) {
       {!ds.length && !pending && (
         <div className="panel tint">
           <h2>Import aggregate reports for {project.domain}</h2>
-          <p className="muted">Receivers like Google, Microsoft and Yahoo email one report per day to the address in your DMARC <code>rua=</code> tag, as <code>.xml.gz</code> or <code>.zip</code> attachments. Save the attachments and drop them here, hundreds at once is fine. <Link href="/docs#get-reports">How to get them out of Gmail or Outlook</Link>.</p>
+          <p className="muted">Receivers like Google, Microsoft and Yahoo email one report per day to the address in your DMARC <code>rua=</code> tag, as <code>.xml.gz</code> or <code>.zip</code> attachments. Drop the attachments here, hundreds at once is fine, or skip saving them and drop the emails themselves (<code>.eml</code>) or a whole Google Takeout <code>.mbox</code>. <Link href="/docs#get-reports">How to get them out of Gmail or Outlook</Link>.</p>
           <p className="muted small">No reports yet? The DNS check and generated records work without them. Publish a DMARC record with rua= first (see Records), then come back in two days.</p>
         </div>
       )}
       <div className={`drop${drag ? ' over' : ''}`} onDragOver={e => { e.preventDefault(); setDrag(true) }} onDragLeave={() => setDrag(false)}
         onDrop={e => { e.preventDefault(); setDrag(false); void readFiles([...e.dataTransfer.files]) }} onClick={() => input.current?.click()} role="button" tabIndex={0}
         onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); input.current?.click() } }} aria-label="Choose report files">
-        <h3>{busy ?? 'Drop .xml, .xml.gz or .zip reports'}</h3>
+        <h3>{busy ?? 'Drop .xml, .xml.gz, .zip, .eml or .mbox files'}</h3>
         <p className="muted small" style={{ margin: 0 }}>or click to choose files. Decompressed and parsed in your browser; nothing is uploaded.</p>
-        <input ref={input} type="file" multiple accept=".xml,.gz,.zip,application/xml,text/xml,application/gzip,application/zip" hidden onChange={e => { if (e.target.files) void readFiles([...e.target.files]); e.target.value = '' }} />
+        <input ref={input} type="file" multiple accept=".xml,.gz,.zip,.eml,.mbox,application/xml,text/xml,application/gzip,application/zip,message/rfc822,application/mbox" hidden onChange={e => { if (e.target.files) void readFiles([...e.target.files]); e.target.value = '' }} />
       </div>
       <details className="paste">
         <summary>Paste report XML instead</summary>

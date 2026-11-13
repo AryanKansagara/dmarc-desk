@@ -35,7 +35,7 @@ export function parseDmarc(record: string): Dmarc {
   const p = (tags.p ?? '').toLowerCase()
   if (!tags.p) issues.push({ level: 'error', msg: 'Missing required p= tag. Without it receivers treat the record as invalid (or as p=none if rua is valid).' })
   else if (!POLICIES.includes(p)) issues.push({ level: 'error', msg: `p=${tags.p} is not valid; use none, quarantine or reject.` })
-  if (tags.sp && !POLICIES.includes(tags.sp.toLowerCase())) issues.push({ level: 'error', msg: `sp=${tags.sp} is not valid.` })
+  for (const k of ['sp', 'np']) if (tags[k] && !POLICIES.includes(tags[k].toLowerCase())) issues.push({ level: 'error', msg: `${k}=${tags[k]} is not valid; use none, quarantine or reject.` })
   const pct = tags.pct === undefined ? 100 : Number(tags.pct)
   if (tags.pct !== undefined && (!Number.isInteger(pct) || pct < 0 || pct > 100)) issues.push({ level: 'error', msg: `pct=${tags.pct} must be an integer from 0 to 100.` })
   for (const k of ['adkim', 'aspf']) if (tags[k] && !/^[rs]$/i.test(tags[k])) issues.push({ level: 'error', msg: `${k}=${tags[k]} must be r or s.` })

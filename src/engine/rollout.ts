@@ -43,6 +43,7 @@ export function planRollout(inp: RolloutInput): { stages: Stage[]; current: numb
   const cur = stageIndex(inp.current)
   const recent = inp.weekly.filter(w => w.volume > 0).slice(-2)
   const latest = recent.at(-1)?.readiness ?? 0
+  const pc = (x: number) => `${Math.round(x * 1000) / 10}%`
   const blockers: string[] = []
   if (!inp.weekly.some(w => w.volume > 0)) blockers.push('No aggregate reports imported yet')
   else {
@@ -52,8 +53,8 @@ export function planRollout(inp: RolloutInput): { stages: Stage[]; current: numb
     if (low.length) {
       const worst = Math.min(...low.map(w => w.readiness))
       blockers.push(low.length === recent.length || low.at(-1) === recent.at(-1)
-        ? `Readiness ${Math.round(latest * 1000) / 10}% is below ${threshold * 100}% (fix the failing senders first)`
-        : `Readiness ${Math.round(latest * 1000) / 10}% now, but ${Math.round(worst * 1000) / 10}% the week before: it needs two weeks in a row at or above ${threshold * 100}%`)
+        ? `Readiness ${pc(latest)} is below ${pc(threshold)} (fix the failing senders first)`
+        : `Readiness ${pc(latest)} now, but ${pc(worst)} the week before: it needs two weeks in a row at or above ${pc(threshold)}`)
     }
   }
   if (inp.unreviewed) blockers.push(`${inp.unreviewed} significant sender${inp.unreviewed > 1 ? 's' : ''} not identified; mark each legitimate or unauthorized`)

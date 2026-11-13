@@ -50,7 +50,6 @@ export const isSpf = (txt: string) => /^v=spf1(\s|$)/i.test(txt.trim())
 export async function expandSpf(domain: string, resolve: Resolver): Promise<SpfResult> {
   const issues: SpfIssue[] = []
   let lookups = 0, voids = 0
-  const seen = new Set<string>()
 
   const fetchRecord = async (d: string): Promise<{ record: string | null; void: boolean; error?: string }> => {
     try {
@@ -66,7 +65,9 @@ export async function expandSpf(domain: string, resolve: Resolver): Promise<SpfR
     return { ip4: a ? ofType(a, 'A') : [], ip6: aaaa ? ofType(aaaa, 'AAAA') : [], void: (!a || !ofType(a, 'A').length) && (!aaaa || !ofType(aaaa, 'AAAA').length) }
   }
 
-  const walk = async (d: string, record: string | null, depth: number): Promise<SpfNode> => {
+  // `path` holds the includes above this node: the same include reached by two branches is legal (it just
+  // costs lookups twice), only a cycle back to an ancestor is a loop.
+  const walk = async (d: string, record: string | null, depth: number, path: Set<string>): Promise<SpfNode> => {
     const node: SpfNode = { domain: d, record, terms: record ? parseSpf(record) : [], lookups: 0, totalLookups: 0, children: [], ip4: [], ip6: [] }
     if (!record) return node
     if (record.length > 255 && !record.includes('"')) issues.push({ level: 'info', msg: `${d}: SPF record is ${record.length} characters; it must be split into 255-character strings in one TXT record.` })
@@ -79,8 +80,8 @@ export async function expandSpf(domain: string, resolve: Resolver): Promise<SpfR
         else if (t.qualifier === '+') (t.kind === 'ip4' ? node.ip4 : node.ip6).push(t.value)
       } else if (t.kind === 'include' || t.kind === 'redirect') {
         if (t.kind === 'redirect' && node.terms.some(x => x.kind === 'all')) continue // redirect is ignored when "all" is present
-        if (seen.has(target) || depth > 10) { issues.push({ level: 'error', msg: `${d}: ${t.kind} loop through ${target}.` }); continue }
-        seen.add(target)
+        if (path.has(target) || depth > 10) { issues.push({ level: 'error', msg: `${d}: ${t.kind} loop through ${target}.` }); continue }
+        if (lookups > 30) continue // far past the limit already reported; stop resolving
         const r = await fetchRecord(target)
         if (r.error) issues.push({ level: 'warn', msg: `${target}: lookup failed (${r.error}).` })
         if (!r.record) {
@@ -89,7 +90,7 @@ export async function expandSpf(domain: string, resolve: Resolver): Promise<SpfR
           node.children.push({ domain: target, record: null, terms: [], lookups: 0, totalLookups: 0, children: [], ip4: [], ip6: [], error: 'No SPF record' })
           continue
         }
-        node.children.push(await walk(target, r.record, depth + 1))
+        node.children.push(await walk(target, r.record, depth + 1, new Set([...path, target])))
       } else if (t.kind === 'a' && t.qualifier === '+') {
         const r = await addrs(target)
         if (r.void) voids++
@@ -116,8 +117,7 @@ export async function expandSpf(domain: string, resolve: Resolver): Promise<SpfR
     if (!top.error) issues.push({ level: 'error', msg: 'No SPF record. Receivers cannot tell which servers may send for this domain.' })
     return { domain, record: null, tree: null, lookups: 0, voidLookups: 0, all: null, ip4: [], ip6: [], issues }
   }
-  seen.add(domain.toLowerCase())
-  const tree = await walk(domain, top.record, 0)
+  const tree = await walk(domain, top.record, 0, new Set([domain.toLowerCase()]))
   const allTerm = tree.terms.find(t => t.kind === 'all')
   const all = allTerm ? `${allTerm.qualifier}all` : null
   if (lookups > 10) issues.push({ level: 'error', msg: `${lookups} DNS lookups; the limit is 10. Receivers return permerror and SPF fails for all your mail. Flatten or remove includes.` })

@@ -28,6 +28,8 @@ export function parseXml(src: string): XNode {
     const gt = src.indexOf('>', i)
     if (gt < 0) throw new XmlError('Unclosed tag', line)
     const raw = src.slice(i + 1, gt)
+    // Unescaped "<" in text, as in <email><someone@example.net></email> or bad<host.net from some reporters: keep it as text.
+    if (!/^\/?[A-Za-z_][\w.:-]*(\s|\/?$)/.test(raw)) { stack.at(-1)!.text += '<'; advance(i + 1); continue }
     const startLine = line
     advance(gt + 1)
     if (raw[0] === '/') {

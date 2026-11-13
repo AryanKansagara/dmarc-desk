@@ -100,7 +100,7 @@ export function Landing() {
         <div className="steps">
           {[
             ['01', 'Check DNS live', 'SPF expanded recursively against the 10-lookup and void-lookup limits, every DMARC tag, DKIM at 36 common selectors, MTA-STS, TLS-RPT, BIMI and DNSSEC, over DNS-over-HTTPS.'],
-            ['02', 'Import reports', 'Drop hundreds of .xml, .xml.gz and .zip aggregate reports at once. Decompressed in the browser, validated with line numbers, duplicates skipped.'],
+            ['02', 'Import reports', 'Drop hundreds of .xml, .xml.gz and .zip aggregate reports at once, or the report emails themselves (.eml, Google Takeout .mbox). Decompressed in the browser, validated with line numbers, duplicates skipped.'],
             ['03', 'Fix each sender', 'Every source IP is mapped to a service (Google, Microsoft 365, SendGrid, Mailchimp, SES, Postmark, HubSpot, Salesforce, Zendesk and more) with the exact setting that makes it align.'],
             ['04', 'Enforce on a schedule', 'A readiness score on legitimate mail only, a staged plan to quarantine and reject with dates and gates, and copy-ready records with a Cloudflare zone-file snippet.'],
           ].map(([n, t, d]) => <div key={n} className="step corners"><span className="step-n">{n}</span><h3>{t}</h3><p>{d}</p></div>)}

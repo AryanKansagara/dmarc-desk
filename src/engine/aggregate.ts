@@ -36,11 +36,22 @@ export interface Issue { line: number; level: 'error' | 'warn'; msg: string }
 const RESULTS = new Set(['pass', 'fail', 'none', 'neutral', 'softfail', 'temperror', 'permerror', 'policy', 'hardfail'])
 const res = (s: string): Result => { const v = s.toLowerCase(); return (v === 'hardfail' ? 'fail' : RESULTS.has(v) ? v : 'none') as Result }
 
+const tryParse = (s: string) => { try { return parseXml(s) } catch { return null } }
+
 export function parseAggregate(xml: string): { report: Report | null; issues: Issue[] } {
   const issues: Issue[] = []
   let root: XNode
   try { root = parseXml(xml) } catch (e) {
-    return { report: null, issues: [{ line: e instanceof XmlError ? e.line : 1, level: 'error', msg: `Not well-formed XML: ${(e as Error).message}` }] }
+    // Some reporters wrap the report in an unclosed element (IKEA's <xs:schema>). If a complete
+    // <feedback> element is inside, read just that and warn instead of rejecting the file.
+    const a = xml.search(/<([\w-]+:)?feedback[\s>]/), b = xml.lastIndexOf('feedback>')
+    const salvaged = a > 0 && b > a ? tryParse(xml.slice(a, b + 9)) : null
+    if (!salvaged) return { report: null, issues: [{ line: e instanceof XmlError ? e.line : 1, level: 'error', msg: `Not well-formed XML: ${(e as Error).message}` }] }
+    const off = xml.slice(0, a).split('\n').length - 1
+    const shift = (n: XNode): void => { n.line += off; n.children.forEach(shift) }
+    shift(salvaged)
+    root = salvaged
+    issues.push({ line: e instanceof XmlError ? e.line : 1, level: 'warn', msg: `Ignored malformed XML around the report (${(e as Error).message}); the <feedback> element itself is intact.` })
   }
   const fb = child(root, 'feedback')
   if (!fb) return { report: null, issues: [{ line: root.children[0]?.line ?? 1, level: 'error', msg: 'No <feedback> element. This does not look like a DMARC aggregate (RUA) report.' }] }
@@ -56,7 +67,8 @@ export function parseAggregate(xml: string): { report: Report | null; issues: Is
   const pctS = txt(pol, 'pct')
   const al = (s: string) => (s.toLowerCase() === 's' ? 's' : 'r') as 'r' | 's'
   const report: Report = {
-    org: txt(meta, 'org_name') || 'Unknown reporter',
+    // Some small receivers leave org_name empty; their email domain is the next best name.
+    org: txt(meta, 'org_name') || txt(meta, 'email').split('@')[1]?.toLowerCase() || 'Unknown reporter',
     email: txt(meta, 'email'),
     id: txt(meta, 'report_id'),
     begin, end: Number.isFinite(end) && end ? end : begin,

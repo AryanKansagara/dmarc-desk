@@ -1,10 +1,9 @@
 // Domain and IP helpers: organizational domain, DMARC alignment, CIDR matching.
 
-// Short list of multi-label public suffixes. A full Public Suffix List is ~200 KB; this covers the common
-// business registrations. Anything else falls back to "last two labels", which is right for .com/.org/.io etc.
-const MULTI = new Set(['co.uk', 'org.uk', 'ac.uk', 'gov.uk', 'me.uk', 'ltd.uk', 'plc.uk', 'com.au', 'net.au', 'org.au', 'edu.au', 'gov.au',
-  'co.nz', 'org.nz', 'co.jp', 'ne.jp', 'or.jp', 'co.in', 'net.in', 'org.in', 'firm.in', 'gen.in', 'ind.in', 'com.br', 'net.br', 'org.br', 'com.mx', 'com.ar', 'com.co',
-  'co.za', 'org.za', 'com.sg', 'com.hk', 'com.tw', 'com.cn', 'net.cn', 'org.cn', 'co.kr', 'or.kr', 'com.tr', 'co.il', 'com.my', 'com.ph', 'com.pk', 'com.ng', 'co.id', 'ac.in'])
+import { SUFFIXES2 } from './psl.ts'
+
+// Organizational domain per RFC 7489 3.2 using the two-label ICANN public suffixes (co.uk, com.au, id.au, gob.mx ...).
+// Three-label suffixes and wildcard rules (*.ck) are not modelled; they are rare for sending domains.
 
 export const normDomain = (d: string) => d.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^mailto:/, '').replace(/^.*@/, '').replace(/[/?#].*$/, '').replace(/\.$/, '')
 
@@ -12,7 +11,7 @@ export function orgDomain(d: string): string {
   const parts = normDomain(d).split('.').filter(Boolean)
   if (parts.length <= 2) return parts.join('.')
   const last2 = parts.slice(-2).join('.')
-  return MULTI.has(last2) ? parts.slice(-3).join('.') : last2
+  return SUFFIXES2.has(last2) ? parts.slice(-3).join('.') : last2
 }
 
 export const isDomain = (d: string) => /^(?=.{1,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,62}[a-z0-9]$/i.test(normDomain(d))

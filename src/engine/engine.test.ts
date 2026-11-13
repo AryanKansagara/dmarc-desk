@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { gzipSync, deflateRawSync } from 'node:zlib'
+import { readFileSync } from 'node:fs'
 import { parseXml } from './xml.ts'
 import { parseAggregate, reportKey, type Report } from './aggregate.ts'
 import { aligned, inCidr, netOf, orgDomain, ptrName } from './domain.ts'
@@ -365,3 +366,112 @@ function makeZip(files: { name: string; data: Buffer; deflate: boolean }[]): Uin
 }
 
 export type { Report }
+
+// ---------- Real-world report files (fixtures/, from parsedmarc, Apache-2.0) ----------
+
+const fixture = (n: string) => new Uint8Array(readFileSync(new URL(`./fixtures/${n}`, import.meta.url)))
+const fromFile = async (n: string) => {
+  const files = await unpack(n, fixture(n))
+  assert.equal(files.length, 1, n)
+  return parseAggregate(files[0].text)
+}
+
+test('real reports: Outlook.com, Fastmail (.xml.gz), Mexican government (.zip) and RFC 9990 (DMARCbis) samples parse', async () => {
+  const ol = (await fromFile('outlook-com.xml')).report!
+  assert.equal(ol.org, 'Outlook.com')
+  assert.equal(ol.rows[0].ip, '100.24.188.149')
+  assert.deepEqual(ol.rows[0].spf, [{ domain: 'example.com', scope: 'mfrom', result: 'fail' }])
+  const fm = (await fromFile('fastmail.xml.gz')).report!
+  assert.equal(fm.org, 'FastMail Pty Ltd')
+  assert.equal(fm.id, '102675056')
+  const mx = (await fromFile('gob-mx.xml.zip')).report!
+  assert.equal(mx.id, '2940')
+  const bis = await fromFile('rfc9990-sample.xml')
+  assert.equal(bis.issues.filter(i => i.level === 'error').length, 0)
+  assert.equal(bis.report!.policy.p, 'quarantine')
+  assert.equal(bis.report!.policy.pct, 100) // DMARCbis drops pct
+  assert.equal(bis.report!.rows[0].count, 123)
+  assert.equal(bis.report!.rows[0].dkim[0].selector, 'abc123')
+})
+
+test('real reports: an unclosed wrapper element (IKEA) is salvaged with a warning, not rejected', async () => {
+  const r = await fromFile('ikea-unclosed-wrapper.xml')
+  assert.ok(r.report)
+  assert.equal(r.report.org, 'ikea.com')
+  assert.equal(r.report.domain, 'example.de')
+  assert.ok(r.issues.some(i => i.level === 'warn' && /<feedback> element itself is intact/.test(i.msg)))
+  assert.equal(r.report.rows[0].dkim[0].result, 'pass')
+})
+
+test('real reports: unescaped "<" in text (<email><x@y></email>, bad<xml.net) is read as text', async () => {
+  const r = await fromFile('unescaped-lt.xml')
+  assert.ok(r.report, JSON.stringify(r.issues))
+  assert.equal(r.report.email, '<bad-xml@bad-xml.net>')
+  assert.equal(r.report.rows.length, 1)
+  // real structural errors are still caught
+  assert.equal(parseAggregate('<feedback><a></b></feedback>').report, null)
+})
+
+test('empty <org_name> falls back to the reporter email domain', async () => {
+  const r = (await fromFile('empty-org-name.xml')).report!
+  assert.equal(r.org, 'accurateplastics.com')
+})
+
+test('report emails: .eml with a multipart zip (Google) and single-part gzip with trailing CRLF (Mimecast)', async () => {
+  const g = await unpack('google-multipart-zip.eml', fixture('google-multipart-zip.eml'))
+  assert.equal(g.length, 1)
+  const gr = parseAggregate(g[0].text).report!
+  assert.equal(gr.org, 'google.com')
+  assert.equal(gr.domain, 'twlnet.com')
+  const m = await unpack('mimecast-gzip-trailing-crlf.eml', fixture('mimecast-gzip-trailing-crlf.eml'))
+  assert.match(m[0].name, /^mimecast\.org!ab\.id\.au!.*\.xml$/)
+  const mr = parseAggregate(m[0].text).report!
+  assert.equal(mr.org, 'Mimecast')
+  assert.equal(mr.policy.p, 'reject')
+})
+
+test('mbox (Google Takeout): every message in the file is unpacked; an email without a report is an error', async () => {
+  const enc = new TextEncoder(), dec = new TextDecoder()
+  const mbox = `From 1 Mon Feb 11 10:00:00 2019\n${dec.decode(fixture('google-multipart-zip.eml'))}\nFrom 2 Thu Aug 31 10:00:00 2023\n${dec.decode(fixture('mimecast-gzip-trailing-crlf.eml'))}\n`
+  const out = await unpack('Takeout.mbox', enc.encode(mbox))
+  assert.deepEqual(out.map(o => parseAggregate(o.text).report?.domain), ['twlnet.com', 'ab.id.au'])
+  await assert.rejects(unpack('note.eml', enc.encode('From: a@example.com\nContent-Type: text/plain\n\nhello\n')), /no report attachment/)
+  // a bare XML report is never mistaken for an email
+  assert.equal((await unpack('r.xml', enc.encode(xml('')))).length, 1)
+})
+
+test('organizational domain uses the Public Suffix List (id.au, gob.mx, com.au) and alignment follows it', () => {
+  assert.equal(orgDomain('mail.ab.id.au'), 'ab.id.au')
+  assert.equal(orgDomain('estadocuenta1.infonacot.gob.mx'), 'infonacot.gob.mx')
+  assert.equal(orgDomain('bounce.shop.com.au'), 'shop.com.au')
+  assert.equal(orgDomain('a.b.example.io'), 'example.io')
+  assert.ok(!aligned('other.id.au', 'ab.id.au'))
+  assert.ok(aligned('em.ab.id.au', 'ab.id.au'))
+})
+
+test('SPF: the same include reached through two branches is not a loop and its lookups count twice', async () => {
+  const r = await expandSpf('d.test', fakeResolver({
+    'd.test': { TXT: ['v=spf1 include:v1.test include:v2.test -all'] },
+    'v1.test': { TXT: ['v=spf1 include:_spf.shared.test ~all'] },
+    'v2.test': { TXT: ['v=spf1 include:_spf.shared.test ~all'] },
+    '_spf.shared.test': { TXT: ['v=spf1 ip4:192.0.2.0/24 include:deep.test ~all'] },
+    'deep.test': { TXT: ['v=spf1 ip4:198.51.100.0/24 ~all'] },
+  }))
+  assert.ok(!r.issues.some(i => /loop/.test(i.msg)), JSON.stringify(r.issues))
+  // v1, v2, shared twice, deep twice
+  assert.equal(r.lookups, 6)
+  assert.deepEqual(r.ip4.sort(), ['192.0.2.0/24', '198.51.100.0/24'])
+})
+
+test('rollout blockers print a slider threshold like 96.5% without float noise', () => {
+  const now = Date.UTC(2026, 10, 2)
+  const p = planRollout({ domain: 'example.com', rua: ['dmarc@example.com'], reporters: 3, unreviewed: 0, now, since: now, threshold: 0.965, current: { p: 'none', pct: 100 }, weekly: [{ week: 'a', readiness: 0.9, volume: 10 }, { week: 'b', readiness: 0.95, volume: 10 }] })
+  const b = p.stages[1].blockers.join(' ')
+  assert.match(b, /below 96\.5%/)
+  assert.doesNotMatch(b, /\d\.\d{3,}/)
+})
+
+test('DMARC parsing rejects an invalid np= (DMARCbis) as it does sp=', () => {
+  assert.ok(parseDmarc('v=DMARC1; p=reject; np=block').issues.some(i => i.level === 'error' && /np=block/.test(i.msg)))
+  assert.ok(!parseDmarc('v=DMARC1; p=reject; np=reject; rua=mailto:d@example.com').issues.some(i => i.level === 'error'))
+})

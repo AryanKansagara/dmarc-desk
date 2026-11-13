@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { Code, Link } from './ui.tsx'
+import { PSL_VERSION, SUFFIXES2 } from './engine/psl.ts'
 
 const GMAIL_SEARCH = `has:attachment (from:noreply-dmarc-support@google.com OR from:dmarcreport@microsoft.com OR from:dmarchelp@yahooinc.com OR subject:"Report domain:")`
 
@@ -48,8 +49,8 @@ export default function Docs() {
       </ol>
       <Code code={GMAIL_SEARCH} label="Gmail search" />
       <ol start={2}>
-        <li>Open each message and use <b>Download all attachments</b>, or for months of reports use <a href="https://takeout.google.com" target="_blank" rel="noreferrer">Google Takeout</a> &gt; Mail &gt; filter by a label you apply to the search above, then unzip the <code>.mbox</code> with any mail client.</li>
-        <li>Drop the downloaded <code>.zip</code>, <code>.gz</code> and <code>.xml</code> files on the Reports tab, all at once. Duplicates are detected and skipped.</li>
+        <li>Open each message and use <b>Download all attachments</b>, or for months of reports use <a href="https://takeout.google.com" target="_blank" rel="noreferrer">Google Takeout</a> &gt; Mail &gt; filter by a label you apply to the search above, then drop the <code>.mbox</code> file from the Takeout archive straight on the Reports tab. Every report attachment inside it is read.</li>
+        <li>Drop the downloaded <code>.zip</code>, <code>.gz</code> and <code>.xml</code> files on the Reports tab, all at once. Duplicates are detected and skipped. Saved messages work too: drag them out of the mail client as <code>.eml</code> files and drop those.</li>
       </ol>
       <h3>Outlook / Microsoft 365</h3>
       <ol>
@@ -96,7 +97,9 @@ export default function Docs() {
         <li>Reports are decompressed and parsed in your browser (native DecompressionStream). Nothing is uploaded. Projects are stored in IndexedDB on this device.</li>
         <li>Signing in is optional. It syncs domains, sender decisions, DNS results and weekly snapshots, plus the raw reports if they are under 2 MB per domain. Larger report sets stay on the device that imported them.</li>
         <li>DNS lookups go from your browser to Cloudflare (<code>cloudflare-dns.com</code>) and, as a fallback, Google (<code>dns.google</code>) public DNS-over-HTTPS. MTA-STS policy files are fetched through a small proxy because they do not allow cross-origin reads.</li>
-        <li>Only common DKIM selectors are probed; add yours in the DNS check. Forensic (RUF) reports and TLS-RPT JSON reports are not parsed. The organisational-domain logic uses a short list of multi-label suffixes (co.uk, com.au and similar) instead of the full Public Suffix List.</li>
+        <li>Only common DKIM selectors are probed; add yours in the DNS check. Forensic (RUF) reports and TLS-RPT JSON reports are not parsed. Outlook <code>.msg</code> files are not read; save as <code>.eml</code> or save the attachments.</li>
+        <li>Organisational domains use the {SUFFIXES2.size.toLocaleString('en')} two-label ICANN suffixes (co.uk, com.au, id.au, gob.mx ...) from the <a href="https://publicsuffix.org/list/public_suffix_list.dat" target="_blank" rel="noreferrer">Public Suffix List</a>, version {PSL_VERSION.slice(0, 10)} (MPL 2.0). Deeper suffixes such as Japanese city domains are not modelled.</li>
+        <li>The report reader is tested against real reports published with <a href="https://github.com/domainaware/parsedmarc/tree/master/samples/aggregate" target="_blank" rel="noreferrer">parsedmarc</a> (Apache 2.0): Google <code>.eml</code> with a zipped report, Mimecast gzip with trailing bytes, Outlook.com, Fastmail, IKEA&rsquo;s report wrapped in an unclosed element, unescaped <code>&lt;</code> in text, empty org names, and the RFC 9990 (DMARCbis) format.</li>
         <li>Sample domains (<code>example.com</code>, <code>example.org</code>) and their reports are synthetic. Invented IPs use documentation ranges (192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24).</li>
       </ul>
     </section>
