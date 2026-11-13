@@ -88,7 +88,7 @@ export default function ProjectView({ id, tab: rawTab }: { id: string; tab: stri
         <div>
           <div className="eyebrow"><Link href="/app">Domains</Link></div>
           <h1 className="row gap wrap">{project.name} {project.sampleId && <SyntheticBadge />}</h1>
-          <p className="muted small" style={{ margin: 0 }}><code>{project.domain}</code>{!empty && <> · {fmtN(x.a.total)} messages · {x.a.reports} reports · {fmtPeriod(period)}</>}</p>
+          <p className="muted small" style={{ margin: 0 }}><code>{project.domain}</code>{!empty && <> · {fmtN(x.a.total)} message{x.a.total === 1 ? '' : 's'} · {x.a.reports} report{x.a.reports === 1 ? '' : 's'} · {fmtPeriod(period)}</>}</p>
         </div>
         {!empty && (
           <div className="toolbar">

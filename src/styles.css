@@ -378,6 +378,7 @@ tbody tr:hover { background: var(--accent-subtle); }
 .docs h3 { margin-top: 22px; }
 .docs ol, .docs ul { padding-left: 22px; }
 .docs li { margin-bottom: 6px; }
+.docs li code, .docs p code { overflow-wrap: anywhere; }
 .toc { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 8px; }
 .toc a { padding: 6px 12px; border-radius: 999px; background: var(--accent-subtle); border: 1px solid var(--line); font-size: 13.5px; }
 .notfound { padding-top: 100px; }

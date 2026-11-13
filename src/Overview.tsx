@@ -30,7 +30,7 @@ export default function Overview({ project, x, period }: TabProps) {
           </div>
         </div>
         <div className="kpis kpis-3">
-          <div className="kpi"><small>Messages reported</small><b>{fmtN(a.total)}</b><p>{a.reports} reports from {a.reporters.length} receiver{a.reporters.length === 1 ? '' : 's'}</p></div>
+          <div className="kpi"><small>Messages reported</small><b>{fmtN(a.total)}</b><p>{a.reports} report{a.reports === 1 ? '' : 's'} from {a.reporters.length} receiver{a.reporters.length === 1 ? '' : 's'}</p></div>
           <div className="kpi"><small>DMARC pass, all mail</small><b>{fmtPct(a.total ? a.pass / a.total : 0, 1)}</b><p>includes spoofing, which should fail</p></div>
           <div className="kpi"><small>Unknown or spoofing</small><b style={{ color: a.suspiciousVolume ? 'var(--c-spoof)' : undefined }}>{fmtN(a.suspiciousVolume)}</b><p>{fmtPct(a.total ? a.suspiciousVolume / a.total : 0, 1)} of volume, blocked at p=reject</p></div>
           <div className="kpi"><small>Forwarded</small><b>{fmtN(a.forwardVolume)}</b><p>{fmtN(a.forwardPass)} kept DKIM and pass</p></div>

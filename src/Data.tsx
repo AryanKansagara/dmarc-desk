@@ -68,7 +68,7 @@ export default function DataTab({ project, ds, update }: TabProps) {
     const meta = { id: src, fileName: pending.results.length === 1 ? pending.results[0].entry : `${new Set(pending.results.map(r => r.file)).size} files`, reports: fresh.length, rows: fresh.reduce((s, r) => s + r.rows.length, 0), messages: fresh.reduce((s, r) => s + r.rows.reduce((t, x) => t + x.count, 0), 0), skipped: pending.results.length - fresh.length, at: Date.now() }
     const saved = await saveProject({ ...target, imports: [...target.imports, meta], snapshots: snaps, dataMissing: false })
     setPending(null)
-    toast(`Imported ${fresh.length} report${fresh.length > 1 ? 's' : ''} (${fmtN(meta.messages)} messages)`, {
+    toast(`Imported ${fresh.length} report${fresh.length > 1 ? 's' : ''} (${fmtN(meta.messages)} message${meta.messages === 1 ? '' : 's'})`, {
       tone: 'ok', undo: async () => { await putData(target.id, before.ds); await saveProject({ ...(getProjects().find(p => p.id === target.id) ?? saved), imports: before.imports, snapshots: before.snapshots }) },
     })
     void resolvePtrs(saved, merged).catch(() => null)

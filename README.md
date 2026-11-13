@@ -7,7 +7,7 @@ Gmail, Yahoo and (since May 2025) Outlook.com reject or junk bulk mail that is n
 ## Features
 
 - **Live DNS grade** over DNS-over-HTTPS (Cloudflare, Google fallback), straight from the browser: MX, SPF with full recursive expansion (10-lookup and void-lookup limits, `+all`/`?all`, duplicates, loops), every DMARC tag including external `rua` authorisation records, DKIM at 36 common selectors plus your own, MTA-STS, TLS-RPT, BIMI and DNSSEC (AD flag).
-- **Report import**: drop hundreds of aggregate (RUA) reports as `.xml`, `.xml.gz` or `.zip`. Decompressed in the browser with the native DecompressionStream, validated with line numbers, duplicates skipped.
+- **Report import**: drop hundreds of aggregate (RUA) reports as `.xml`, `.xml.gz` or `.zip`, or the report emails themselves (`.eml`, Google Takeout `.mbox`). Decompressed in the browser with the native DecompressionStream, validated with line numbers, duplicates skipped. Tested against real reports from Google, Microsoft, Mimecast, Fastmail and others (the parsedmarc sample set), including their known quirks.
 - **Sender inventory**: every source IP mapped to a service (Google Workspace, Microsoft 365, SendGrid, Mailchimp/Mandrill, Amazon SES, Postmark, HubSpot, Salesforce, Zendesk, Mailgun, Brevo and more) from DKIM/Return-Path domains, netblocks and reverse DNS. Per-sender SPF/DKIM alignment, why it fails, forwarding detection, volume share and the exact setting to change.
 - **Readiness score** on legitimate mail only, and a "looks fixed since" signal for senders whose old reports still show failures.
 - **SPF builder** that flattens the heaviest includes to stay under 10 lookups.

@@ -18,11 +18,10 @@ let live: Resolver | null = null
 export const liveResolver = () => live ??= dohResolver()
 export const resolverFor = (p: Pick<Project, 'sampleId'>): Resolver => p.sampleId ? fakeResolver(sampleZone(p.sampleId), { ad: p.sampleId === 'fieldstone' ? ['example.org', '_dmarc.example.org'] : [] }) : liveResolver()
 
-/** MTA-STS policy files are rarely CORS-enabled, so fall back to our tiny proxy function. */
+/** MTA-STS policy files are rarely CORS-enabled, so ask our tiny proxy function first; direct fetch is the fallback for local dev. */
 export async function fetchStsPolicy(domain: string): Promise<string | null> {
-  const url = `https://mta-sts.${domain}/.well-known/mta-sts.txt`
-  try { const r = await fetch(url); if (r.ok) return await r.text() } catch { /* CORS or offline: try the proxy */ }
-  try { const r = await fetch(`/api/mta-sts?domain=${encodeURIComponent(domain)}`); if (r.ok) return await r.text() } catch { /* not available */ }
+  try { const r = await fetch(`/api/mta-sts?domain=${encodeURIComponent(domain)}`); if (r.ok && r.headers.get('content-type')?.startsWith('text/plain')) return await r.text(); if (r.status === 404) return null } catch { /* not deployed */ }
+  try { const r = await fetch(`https://mta-sts.${domain}/.well-known/mta-sts.txt`); if (r.ok) return await r.text() } catch { /* CORS or offline */ }
   return null
 }
 
