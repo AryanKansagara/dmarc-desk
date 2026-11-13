@@ -475,3 +475,11 @@ test('DMARC parsing rejects an invalid np= (DMARCbis) as it does sp=', () => {
   assert.ok(parseDmarc('v=DMARC1; p=reject; np=block').issues.some(i => i.level === 'error' && /np=block/.test(i.msg)))
   assert.ok(!parseDmarc('v=DMARC1; p=reject; np=reject; rua=mailto:d@example.com').issues.some(i => i.level === 'error'))
 })
+
+test('netblocks published in vendor SPF (Nov 2026) identify senders without rDNS or auth domains', () => {
+  assert.equal(identify('98.77.12.34', null, [])?.id, 'ses')
+  assert.equal(identify('159.26.180.1', null, [])?.id, 'sendgrid')
+  assert.equal(identify('204.220.170.9', null, [])?.id, 'mailgun')
+  assert.equal(identify('2800:3f0:4864::1', null, [])?.id, 'google')
+  assert.equal(identify('192.0.2.1', null, []), null)
+})
