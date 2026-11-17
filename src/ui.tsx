@@ -288,7 +288,7 @@ export function Footer() {
       <div className="footer-inner">
         <div className="footer-brand"><Monogram /> <strong>DMARC Desk</strong></div>
         <nav className="footer-nav" aria-label="Footer"><Link href="/app">Domains</Link><Link href="/docs">Docs</Link><Link href="/settings">Settings</Link></nav>
-        <p>Built by Aryan Kansagara. Independent project, not affiliated with Cloudflare.</p>
+        <p>Built by Aryan Kansagara.</p>
         <p className="muted small">Sample domains and their reports are synthetic. Your reports are parsed in your browser and stored on this device unless you sign in to sync. DNS lookups go to Cloudflare and Google public DNS-over-HTTPS.</p>
       </div>
     </footer>
