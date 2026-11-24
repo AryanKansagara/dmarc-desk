@@ -24,7 +24,18 @@ npm install
 npm run dev      # http://localhost:5173
 npm test         # engine tests (node --test)
 npm run build
+npm run test:e2e # browser tests (Playwright), see below
 ```
+
+### End-to-end tests
+
+`npm run test:e2e` builds the app and runs the Playwright (Chromium) suite in `e2e/` against that production build, served by `vite preview` on port 4390 (set `E2E_PORT` to change it). The first time, install the browser with `npx playwright install chromium` (add `--with-deps` on a bare Linux box).
+
+The tests never touch the network. DNS-over-HTTPS, the MTA-STS proxy route and Google Fonts are stubbed per test; any other request that is not the preview server is blocked and fails the test, and so does an uncaught page error. Every test starts signed out in an empty browser profile, so no Supabase request is made. Report files come from `src/engine/fixtures`.
+
+A few tests are marked `test.fail()`: each reproduces a known app bug that has its own GitHub issue (linked in the test). They are expected to fail until the bug is fixed; then Playwright flags them as unexpectedly passing and the marker goes.
+
+GitHub Actions runs the build, the unit tests and these tests on every pull request and push to `main` (job `test`). Vercel deploys only `main`: `vercel.json` turns off preview deployments for other branches.
 
 Cloud sync needs `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` in `.env` (see `.env.example`). Without them the app runs fully local.
 
