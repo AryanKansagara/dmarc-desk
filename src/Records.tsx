@@ -38,7 +38,7 @@ export default function Records({ project, x, update }: TabProps) {
   useEffect(() => {
     let on = true
     const res = resolverFor(project)
-    void Promise.all(plan.includes.filter(i => !(i in expanded)).map(async i => [i, (await expandSpf(i, res).catch(() => null))?.tree ?? undefined] as const))
+    void Promise.all(plan.includes.filter(i => !(i in expanded)).map(async i => [i, (await expandSpf(i, res).then(r => r.failed.length ? null : r, () => null))?.tree ?? undefined] as const))
       .then(r => { if (on && r.length) setExpanded(e => ({ ...e, ...Object.fromEntries(r) })) })
     return () => { on = false }
   }, [plan.includes.join(','), project.id])
