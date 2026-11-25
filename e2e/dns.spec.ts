@@ -98,6 +98,40 @@ test.describe('live DNS grading, against stubbed DNS-over-HTTPS', () => {
     await expect(row(page, 'DMARC')).toContainText('p=quarantine pct=50')
   })
 
+  test('a failed check stays on the page as an error, with no spinner, and can be run again', async ({ page, dns }) => {
+    dns.set(MIDWAY).failing('_dmarc.midway.test')
+    await addDomain(page, 'midway.test')
+    await expect(toastText(page).first()).toContainText('DNS check failed')
+    await expect(toastText(page)).toHaveCount(0, { timeout: 15_000 }) // the toast is gone; the page must still say what happened
+
+    await expect(page.getByRole('alert')).toContainText('DNS check failed: Google DoH returned HTTP 502. Your network may block DNS-over-HTTPS.')
+    await expect(page.locator('.spinner')).toHaveCount(0)
+    await expect(page.getByText('Querying DNS')).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Run check' })).toBeEnabled()
+
+    // Running it again shows the check is running, drops the old error, and then the result.
+    dns.fail.clear()
+    await page.getByRole('button', { name: 'Run check' }).click()
+    await expect(grade(page)).toHaveText('C')
+    await expect(page.getByRole('alert')).toHaveCount(0)
+    await expect(page.locator('.spinner')).toHaveCount(0)
+  })
+
+  test('a later check that fails says so above the last good result instead of replacing it', async ({ page, dns }) => {
+    dns.set(MIDWAY)
+    await addDomain(page, 'midway.test')
+    await expect(grade(page)).toHaveText('C')
+
+    await page.reload() // the resolver caches answers for the life of the page
+    await expect(grade(page)).toHaveText('C')
+    dns.failing('midway.test MX')
+    await page.getByRole('button', { name: 'Check again' }).click()
+    await expect(page.getByRole('alert')).toContainText('DNS check failed')
+    await expect(page.getByRole('alert')).toContainText('The results below are from the last successful check.')
+    await expect(grade(page)).toHaveText('C')
+    await expect(page.getByRole('button', { name: 'Check again' })).toBeEnabled()
+  })
+
   test('a failed MX lookup is not graded as "No MX records"', async ({ page, dns }) => {
     dns.set(MIDWAY).failing('midway.test MX')
     await addDomain(page, 'midway.test')
