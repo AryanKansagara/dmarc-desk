@@ -82,9 +82,11 @@ export function parseAggregate(xml: string): { report: Report | null; issues: Is
   for (const r of recs) {
     const row = child(r, 'row')
     const ip = txt(row, 'source_ip')
-    const count = Number(txt(row, 'count'))
+    // Plain decimal digits only: Number() also takes "", "0x10", "1e3", "+7" and "1.0", and 1e20 is not a message count.
+    const countText = txt(row, 'count')
+    const count = /^\d+$/.test(countText) ? Number(countText) : NaN
     if (!isIP(ip)) { issues.push({ line: child(row, 'source_ip')?.line ?? r.line, level: 'error', msg: `Invalid source IP "${ip}"; row skipped.` }); continue }
-    if (!Number.isInteger(count) || count < 0) { issues.push({ line: child(row, 'count')?.line ?? r.line, level: 'error', msg: `Invalid message count "${txt(row, 'count')}"; row skipped.` }); continue }
+    if (!Number.isSafeInteger(count)) { issues.push({ line: child(row, 'count')?.line ?? r.line, level: 'error', msg: `Invalid message count "${countText}"; row skipped.` }); continue }
     const pe = child(row, 'policy_evaluated')
     const ids = child(r, 'identifiers')
     const auth = child(r, 'auth_results')

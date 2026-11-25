@@ -215,7 +215,7 @@ test.describe('reports that cannot be read', () => {
     await expect(page.getByRole('button', { name: 'Import 0 reports' })).toBeDisabled()
   })
 
-  // Known bugs in how reports are judged. Each states what the app should do and is expected to fail until it does.
+  // Reports that are readable but wrong.
   const oddReport = (id: string, count: string) => `<?xml version="1.0"?><feedback><report_metadata><org_name>Odd Org</org_name><email>a@odd.test</email><report_id>${id}</report_id><date_range><begin>1760000000</begin><end>1760086400</end></date_range></report_metadata><policy_published><domain>example.com</domain><p>none</p></policy_published><record><row><source_ip>192.0.2.1</source_ip><count>${count}</count><policy_evaluated><disposition>none</disposition><dkim>pass</dkim><spf>fail</spf></policy_evaluated></row><identifiers><header_from>example.com</header_from></identifiers><auth_results><spf><domain>example.com</domain><result>pass</result></spf></auth_results></record></feedback>`
 
   // https://github.com/AryanKansagara/dmarc-desk/issues/5
@@ -254,13 +254,29 @@ test.describe('reports that cannot be read', () => {
   })
 
   // https://github.com/AryanKansagara/dmarc-desk/issues/6
-  for (const count of ['99999999999999999999', '0x10', '1e3', '+7']) {
-    test(`a message count of ${count} is rejected`, async ({ page }) => {
-      test.fail()
+  for (const count of ['99999999999999999999', '0x10', '1e3', '+7', '1.0', '']) {
+    test(`a message count of "${count}" is rejected and never counted`, async ({ page }) => {
       await addDomain(page, 'example.com')
       await openTab(page, 'Reports')
-      await chooseFiles(page, reportFile('odd-count.xml', oddReport('c', count)))
-      await expect(page.locator('.issues')).toContainText(`Invalid message count "${count}"`)
+      // A second, good row, so the report itself stays importable and the totals show what was kept.
+      const twoRows = oddReport('c', count).replace('</feedback>', oddReport('c', '7').match(/<record>.*<\/record>/)![0].replace('192.0.2.1', '192.0.2.2') + '</feedback>')
+      await chooseFiles(page, reportFile('odd-count.xml', twoRows))
+      await expect(page.locator('.issues')).toContainText(`Invalid message count "${count}"; row skipped.`)
+      expect(await validation(page)).toEqual({ new: 1, duplicate: 0, otherDomain: 0, unreadable: 0 })
+      await importButton(page).click()
+      await expect(toastText(page).first()).toContainText('Imported 1 report (7 messages)')
+      await openTab(page, 'Reports')
+      await expect(cell(imports(page), 2)).toHaveText('7')
     })
   }
+
+  test('plain counts, including 0 and leading zeros, are all counted', async ({ page }) => {
+    await addDomain(page, 'example.com')
+    await openTab(page, 'Reports')
+    const rec = (n: number, count: string) => oddReport('e', count).match(/<record>.*<\/record>/)![0].replace('192.0.2.1', `192.0.2.${n}`)
+    await chooseFiles(page, reportFile('plain-counts.xml', oddReport('e', '0').replace(/<record>.*<\/record>/, rec(1, '0') + rec(2, '007') + rec(3, '1200'))))
+    await expect(page.locator('.issues')).toHaveCount(0)
+    await importButton(page).click()
+    await expect(toastText(page).first()).toContainText('Imported 1 report (1,207 messages)')
+  })
 })
