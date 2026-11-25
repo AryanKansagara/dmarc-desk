@@ -21,7 +21,22 @@ const PROVIDERS = [
 
 interface RawAnswer { Status: number; AD?: boolean; Answer?: { name: string; type: number; data: string; TTL: number }[] }
 
-/** A caching DoH resolver. Falls back to the next provider on network error or SERVFAIL. */
+const RCODE: Record<number, string> = { 1: 'FORMERR', 2: 'SERVFAIL', 4: 'NOTIMP', 5: 'REFUSED' }
+
+/**
+ * Only NOERROR (0, possibly with no answers) and NXDOMAIN (3) are answers about the name. Any other RCODE and any
+ * body that is not a DNS JSON answer is a failure to look the name up (RFC 7208 temperror), never an empty answer.
+ */
+function parseAnswer(j: unknown, prov: string, name: string): RawAnswer {
+  const a = j as RawAnswer | null
+  if (!a || typeof a !== 'object' || !Number.isInteger(a.Status)) throw new Error(`${prov}: unreadable DNS answer for ${name}`)
+  if (a.Status !== 0 && a.Status !== 3) throw new Error(`${prov}: ${RCODE[a.Status] ?? `RCODE ${a.Status}`} for ${name}`)
+  if (a.Answer !== undefined && (!Array.isArray(a.Answer) || a.Answer.some(x => !x || typeof x !== 'object' || typeof x.data !== 'string' || !Number.isInteger(x.type))))
+    throw new Error(`${prov}: unreadable DNS answer for ${name}`)
+  return a
+}
+
+/** A caching DoH resolver. Falls back to the next provider on network error, timeout, HTTP error, bad body or SERVFAIL; throws when every provider failed. */
 export function dohResolver(fetchFn: typeof fetch = fetch, timeoutMs = 6000): Resolver {
   const cache = new Map<string, Promise<DnsAnswer>>()
   return (name, type) => {
@@ -31,16 +46,14 @@ export function dohResolver(fetchFn: typeof fetch = fetch, timeoutMs = 6000): Re
       p = (async () => {
         let last: unknown = null
         for (const prov of PROVIDERS) {
+          const ctrl = new AbortController()
+          const t = setTimeout(() => ctrl.abort(), timeoutMs)
           try {
-            const ctrl = new AbortController()
-            const t = setTimeout(() => ctrl.abort(), timeoutMs)
             const r = await fetchFn(prov.url(name, type), { headers: { accept: 'application/dns-json' }, signal: ctrl.signal })
-            clearTimeout(t)
             if (!r.ok) throw new Error(`${prov.name} DoH returned HTTP ${r.status}`)
-            const j = await r.json() as RawAnswer
-            if (j.Status === 2) { last = new Error(`${prov.name}: SERVFAIL for ${name}`); continue }
+            const j = parseAnswer(await r.json().catch(() => { throw new Error(`${prov.name}: unreadable DNS answer for ${name}`) }), prov.name, name)
             return { status: j.Status, ad: !!j.AD, via: prov.name, answers: (j.Answer ?? []).map(a => ({ name: a.name, type: a.type, data: a.data, ttl: a.TTL })) }
-          } catch (e) { last = e }
+          } catch (e) { last = ctrl.signal.aborted ? new Error(`${prov.name}: no answer for ${name} within ${timeoutMs / 1000}s`) : e } finally { clearTimeout(t) }
         }
         cache.delete(key)
         throw last instanceof Error ? last : new Error('DNS lookup failed')

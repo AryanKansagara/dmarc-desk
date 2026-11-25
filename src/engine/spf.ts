@@ -1,6 +1,6 @@
 // SPF (RFC 7208): recursive expansion with the 10 DNS-lookup and 2 void-lookup limits, and a builder that
 // flattens the heaviest includes into ip4/ip6 when a record would go over the limit.
-import { ofType, txtOf, type Resolver } from './dns.ts'
+import { ofType, txtOf, type DnsAnswer, type Resolver } from './dns.ts'
 import { isIP } from './domain.ts'
 
 export interface Term { qualifier: '+' | '-' | '~' | '?'; kind: string; value: string; raw: string }
@@ -24,6 +24,8 @@ export interface SpfResult {
   tree: SpfNode | null
   lookups: number
   voidLookups: number
+  /** Lookups that did not complete (SERVFAIL, timeout, HTTP error, bad body). RFC 7208 temperror: the record could not be evaluated, which is not the same as a missing record. */
+  failed: { name: string; error: string }[]
   all: string | null
   ip4: string[]
   ip6: string[]
@@ -50,6 +52,13 @@ export const isSpf = (txt: string) => /^v=spf1(\s|$)/i.test(txt.trim())
 export async function expandSpf(domain: string, resolve: Resolver): Promise<SpfResult> {
   const issues: SpfIssue[] = []
   let lookups = 0, voids = 0
+  const failed: { name: string; error: string }[] = []
+  const fail = (name: string, e: unknown, say = true) => {
+    const error = e instanceof Error ? e.message : String(e)
+    failed.push({ name, error })
+    if (say) issues.push({ level: 'warn', msg: `Lookup of ${name} failed (${error}); it was not checked, so addresses and counts may be incomplete.` })
+    return error
+  }
 
   const fetchRecord = async (d: string): Promise<{ record: string | null; void: boolean; error?: string }> => {
     try {
@@ -57,12 +66,17 @@ export async function expandSpf(domain: string, resolve: Resolver): Promise<SpfR
       const recs = txtOf(a).filter(isSpf)
       if (recs.length > 1) issues.push({ level: 'error', msg: `${d} publishes ${recs.length} SPF records. Receivers return permerror; merge them into one.` })
       return { record: recs[0] ?? null, void: a.status === 3 || !a.answers.length }
-    } catch (e) { return { record: null, void: false, error: (e as Error).message } }
+    } catch (e) { return { record: null, void: false, error: fail(d, e, false) } }
   }
 
+  // A lookup that errors is neither an answer nor a void lookup: it is recorded in `failed` and never counted as empty.
   const addrs = async (host: string) => {
-    const [a, aaaa] = await Promise.all([resolve(host, 'A').catch(() => null), resolve(host, 'AAAA').catch(() => null)])
-    return { ip4: a ? ofType(a, 'A') : [], ip6: aaaa ? ofType(aaaa, 'AAAA') : [], void: (!a || !ofType(a, 'A').length) && (!aaaa || !ofType(aaaa, 'AAAA').length) }
+    const [a, aaaa] = await Promise.all([resolve(host, 'A').catch(e => e as Error), resolve(host, 'AAAA').catch(e => e as Error)])
+    const ok = (x: DnsAnswer | Error): x is DnsAnswer => !(x instanceof Error)
+    if (!ok(a)) fail(`${host} A`, a, ok(aaaa))
+    if (!ok(aaaa)) fail(`${host} AAAA`, aaaa)
+    const ip4 = ok(a) ? ofType(a, 'A') : [], ip6 = ok(aaaa) ? ofType(aaaa, 'AAAA') : []
+    return { ip4, ip6, void: ok(a) && ok(aaaa) && !ip4.length && !ip6.length }
   }
 
   // `path` holds the includes above this node: the same include reached by two branches is legal (it just
@@ -83,7 +97,12 @@ export async function expandSpf(domain: string, resolve: Resolver): Promise<SpfR
         if (path.has(target) || depth > 10) { issues.push({ level: 'error', msg: `${d}: ${t.kind} loop through ${target}.` }); continue }
         if (lookups > 30) continue // far past the limit already reported; stop resolving
         const r = await fetchRecord(target)
-        if (r.error) issues.push({ level: 'warn', msg: `${target}: lookup failed (${r.error}).` })
+        if (r.error) {
+          // Could not look it up (temperror): say nothing about whether the record exists.
+          issues.push({ level: 'warn', msg: `${target}: lookup failed (${r.error}). ${t.kind === 'redirect' ? 'The redirect' : 'The include'} could not be checked, so lookup counts may be incomplete.` })
+          node.children.push({ domain: target, record: null, terms: [], lookups: 0, totalLookups: 0, children: [], ip4: [], ip6: [], error: 'Lookup failed' })
+          continue
+        }
         if (!r.record) {
           if (r.void) voids++
           issues.push({ level: t.kind === 'redirect' ? 'error' : 'error', msg: `${d}: ${t.kind} ${target} has no SPF record${r.void ? ' (void lookup)' : ''}. Receivers return permerror.` })
@@ -96,9 +115,9 @@ export async function expandSpf(domain: string, resolve: Resolver): Promise<SpfR
         if (r.void) voids++
         node.ip4.push(...r.ip4); node.ip6.push(...r.ip6)
       } else if (t.kind === 'mx' && t.qualifier === '+') {
-        const mx = await resolve(target, 'MX').catch(() => null)
+        const mx = await resolve(target, 'MX').catch(e => { fail(`${target} MX`, e); return null })
         const hosts = mx ? ofType(mx, 'MX').map(x => x.split(/\s+/)[1]?.replace(/\.$/, '')).filter(Boolean) : []
-        if (!hosts.length) voids++
+        if (mx && !hosts.length) voids++
         if (hosts.length > 10) issues.push({ level: 'error', msg: `${d}: mx mechanism resolves to ${hosts.length} hosts; the limit is 10.` })
         for (const h of hosts.slice(0, 10)) { const r = await addrs(h); node.ip4.push(...r.ip4); node.ip6.push(...r.ip6) }
       } else if (t.kind === 'ptr') {
@@ -112,10 +131,10 @@ export async function expandSpf(domain: string, resolve: Resolver): Promise<SpfR
   }
 
   const top = await fetchRecord(domain)
-  if (top.error) issues.push({ level: 'error', msg: `Lookup failed: ${top.error}` })
+  if (top.error) issues.push({ level: 'warn', msg: `Lookup failed: ${top.error}. The SPF record could not be checked; this says nothing about whether one is published.` })
   if (!top.record) {
     if (!top.error) issues.push({ level: 'error', msg: 'No SPF record. Receivers cannot tell which servers may send for this domain.' })
-    return { domain, record: null, tree: null, lookups: 0, voidLookups: 0, all: null, ip4: [], ip6: [], issues }
+    return { domain, record: null, tree: null, lookups: 0, voidLookups: 0, failed, all: null, ip4: [], ip6: [], issues }
   }
   const tree = await walk(domain, top.record, 0, new Set([domain.toLowerCase()]))
   const allTerm = tree.terms.find(t => t.kind === 'all')
@@ -129,7 +148,7 @@ export async function expandSpf(domain: string, resolve: Resolver): Promise<SpfR
   const dupes = tree.terms.filter((t, i) => tree.terms.findIndex(x => x.raw.toLowerCase() === t.raw.toLowerCase()) !== i)
   if (dupes.length) issues.push({ level: 'warn', msg: `Duplicate terms: ${[...new Set(dupes.map(d => d.raw))].join(', ')}. Each duplicate include still costs a lookup.` })
   const ip4 = collect(tree, 'ip4'), ip6 = collect(tree, 'ip6')
-  return { domain, record: top.record, tree, lookups, voidLookups: voids, all, ip4, ip6, issues }
+  return { domain, record: top.record, tree, lookups, voidLookups: voids, failed, all, ip4, ip6, issues }
 }
 
 const collect = (n: SpfNode, k: 'ip4' | 'ip6'): string[] => [...new Set([...n[k], ...n.children.flatMap(c => collect(c, k))])]

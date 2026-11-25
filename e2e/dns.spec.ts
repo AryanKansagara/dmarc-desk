@@ -130,24 +130,51 @@ test.describe('live DNS grading, against stubbed DNS-over-HTTPS', () => {
     expect(dns.queries).toEqual([])
   })
 
-  // Known bugs, filed as issues. Each test states what the app should do and is expected to fail until it does.
-  // When one is fixed this test starts passing, Playwright reports "expected to fail", and `test.fail()` goes.
-  test.describe('known bug: a failed SPF lookup is graded as a missing record', () => {
-    // https://github.com/AryanKansagara/dmarc-desk/issues/2
+  // https://github.com/AryanKansagara/dmarc-desk/issues/2: a lookup that fails is "could not check", never a missing record.
+  test.describe('a failed SPF lookup is not graded as a missing record', () => {
     test('the SPF record of the domain itself', async ({ page, dns }) => {
-      test.fail()
       dns.set(MIDWAY).failing('midway.test TXT')
       await addDomain(page, 'midway.test')
-      await expect(check(page, 'SPF')).toContainText('Lookup failed') // true today
+      await expect(check(page, 'SPF')).toContainText('Lookup failed')
+      await expect(row(page, 'SPF')).toContainText('Could not check')
       await expect(row(page, 'SPF')).not.toContainText('Missing')
+      await expect(check(page, 'SPF')).toContainText('not graded')
+      await expect(check(page, 'SPF')).not.toContainText('No SPF record')
+      await expect(page.locator('.grade-card')).toContainText('SPF could not be checked and is left out of the score')
+      await expect(page.locator('.grade-card .grade-meta')).not.toContainText('45/100')
     })
 
     test('an include of the record', async ({ page, dns }) => {
-      test.fail()
       dns.set(MIDWAY).failing('spf.vendor.test')
       await addDomain(page, 'midway.test')
-      await expect(check(page, 'SPF')).toContainText('spf.vendor.test: lookup failed') // true today
+      await expect(check(page, 'SPF')).toContainText('spf.vendor.test: lookup failed')
       await expect(check(page, 'SPF')).not.toContainText('has no SPF record')
+      await expect(check(page, 'SPF')).not.toContainText('permerror')
+      await expect(row(page, 'SPF')).toContainText('Could not check')
+      await expect(row(page, 'SPF')).not.toHaveClass(/st-fail/)
+    })
+
+    test('an include that really does not exist is still a permerror, so it is graded', async ({ page, dns }) => {
+      const { ['spf.vendor.test']: _, ...zone } = MIDWAY
+      dns.set(zone)
+      await addDomain(page, 'midway.test')
+      await expect(check(page, 'SPF')).toContainText('include spf.vendor.test has no SPF record (void lookup)')
+      await expect(row(page, 'SPF')).toHaveClass(/st-fail/)
+    })
+
+    test('an SPF record that really is missing is still graded as missing', async ({ page, dns }) => {
+      dns.set({ ...MIDWAY, 'midway.test': { MX: ['10 aspmx.l.google.com.'] } })
+      await addDomain(page, 'midway.test')
+      await expect(row(page, 'SPF')).toContainText('Missing')
+      await expect(row(page, 'SPF')).toHaveClass(/st-fail/)
+    })
+
+    test('an optional record that cannot be looked up is not reported as "Not set up"', async ({ page, dns }) => {
+      dns.set(MIDWAY).failing('_mta-sts.midway.test')
+      await addDomain(page, 'midway.test')
+      await expect(row(page, 'MTA-STS')).toContainText('Could not check')
+      await expect(row(page, 'MTA-STS')).not.toContainText('Not set up')
+      await expect(row(page, 'TLS-RPT')).toContainText('Not set up')
     })
   })
 })
