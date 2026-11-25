@@ -16,6 +16,7 @@ export function GradeCard({ check, compact = false }: { check: DomainCheck; comp
           <code className="grade-domain">{check.domain}</code>
           <div className="small muted">{check.score}/100 · {check.via === 'Synthetic zone' ? 'synthetic zone, no network' : `via ${check.via} DNS-over-HTTPS`}</div>
           {check.capped && <div className="small warn-text">{check.capped}</div>}
+          {!!check.unchecked?.length && !check.capped && <div className="small warn-text">{check.unchecked.join(', ')} could not be checked and {check.unchecked.length > 1 ? 'are' : 'is'} left out of the score.</div>}
         </div>
       </div>
       <ul className="checks">
@@ -77,7 +78,7 @@ export default function DnsTab({ project, update }: TabProps) {
           <div>
             {c.sections.map(s => (
               <div key={s.id} className={`panel check-panel st-${s.status}`}>
-                <div className="panel-head"><h2><span className="st" aria-hidden="true">{ICON[s.status]}</span> {s.title}</h2><span className="small muted">{s.summary} · {s.points}/{s.max}</span></div>
+                <div className="panel-head"><h2><span className="st" aria-hidden="true">{ICON[s.status]}</span> {s.title}</h2><span className="small muted">{s.summary} · {s.unchecked ? 'not graded' : `${s.points}/${s.max}`}</span></div>
                 {s.record && <Code code={s.record} label={s.id === 'spf' ? `TXT ${c.domain}` : s.id === 'dmarc' ? `TXT _dmarc.${c.domain}` : s.id === 'mta-sts' ? `TXT _mta-sts.${c.domain}` : s.id === 'tls-rpt' ? `TXT _smtp._tls.${c.domain}` : `TXT default._bimi.${c.domain}`} />}
                 {s.id === 'spf' && c.spf.tree && c.spf.tree.children.length > 0 && <details className="spf-tree"><summary>Include tree ({c.spf.lookups} lookups)</summary><ul><SpfTree n={c.spf.tree} /></ul></details>}
                 {s.id === 'dkim' && c.dkim.length > 0 && <div className="table-wrap"><table><thead><tr><th>Selector</th><th>Type</th><th>Key</th><th>Status</th></tr></thead><tbody>{c.dkim.map(k => <tr key={k.selector}><td><code>{k.selector}._domainkey</code></td><td>{k.keyType}</td><td>{k.bits ? `${k.bits}-bit` : '—'}</td><td>{k.revoked ? 'revoked' : k.testing ? 'testing' : 'active'}</td></tr>)}</tbody></table></div>}
