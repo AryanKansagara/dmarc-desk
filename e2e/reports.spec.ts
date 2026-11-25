@@ -204,16 +204,15 @@ test.describe('reports that cannot be read', () => {
     await expect(cell(imports(page), 3)).toHaveText('2')
   })
 
-  // Known bug: https://github.com/AryanKansagara/dmarc-desk/issues/3
-  // Remove `test.fail()` when it is fixed; this test then starts passing and must be unmarked.
+  // https://github.com/AryanKansagara/dmarc-desk/issues/3
   test('a truncated .xml.gz says the file is damaged, not "Failed to fetch"', async ({ page }) => {
-    test.fail()
     await addDomain(page, 'indemed.com')
     await openTab(page, 'Reports')
     await chooseFiles(page, reportFile('truncated.xml.gz', fixture('fastmail.xml.gz').subarray(0, 100)))
     expect(await validation(page)).toEqual({ new: 0, duplicate: 0, otherDomain: 0, unreadable: 1 })
-    await expect(page.locator('.issues')).toContainText('Could not decompress')
+    await expect(page.locator('.issues')).toContainText('Could not decompress: The gzip file is damaged or cut short')
     await expect(page.locator('.issues')).not.toContainText('Failed to fetch')
+    await expect(page.getByRole('button', { name: 'Import 0 reports' })).toBeDisabled()
   })
 
   // Known bugs in how reports are judged. Each states what the app should do and is expected to fail until it does.
