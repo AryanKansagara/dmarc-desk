@@ -219,13 +219,38 @@ test.describe('reports that cannot be read', () => {
   const oddReport = (id: string, count: string) => `<?xml version="1.0"?><feedback><report_metadata><org_name>Odd Org</org_name><email>a@odd.test</email><report_id>${id}</report_id><date_range><begin>1760000000</begin><end>1760086400</end></date_range></report_metadata><policy_published><domain>example.com</domain><p>none</p></policy_published><record><row><source_ip>192.0.2.1</source_ip><count>${count}</count><policy_evaluated><disposition>none</disposition><dkim>pass</dkim><spf>fail</spf></policy_evaluated></row><identifiers><header_from>example.com</header_from></identifiers><auth_results><spf><domain>example.com</domain><result>pass</result></spf></auth_results></record></feedback>`
 
   // https://github.com/AryanKansagara/dmarc-desk/issues/5
-  test('a report whose only row is rejected is not offered as a new report', async ({ page }) => {
-    test.fail()
+  for (const [what, count] of [['a non-integer count', '1.5'], ['a negative count', '-3']]) {
+    test(`a report whose only row is rejected for ${what} is unreadable, and the corrected report can still be imported`, async ({ page }) => {
+      await addDomain(page, 'example.com')
+      await openTab(page, 'Reports')
+      await chooseFiles(page, reportFile('rejected-row.xml', oddReport('b', count)))
+      await expect(page.locator('.issues')).toContainText(`Invalid message count "${count}"; row skipped.`)
+      await expect(page.locator('.issues')).toContainText('All 1 row was rejected, so none of this report can be counted')
+      expect(await validation(page)).toEqual({ new: 0, duplicate: 0, otherDomain: 0, unreadable: 1 })
+      await expect(page.getByRole('button', { name: 'Import 0 reports' })).toBeDisabled()
+      await page.getByRole('button', { name: 'Cancel' }).click()
+      await expect(imports(page)).toHaveCount(0)
+
+      // Same reporter and id, with the row fixed: a new report, not "Already imported".
+      await chooseFiles(page, reportFile('fixed.xml', oddReport('b', '5')))
+      expect(await validation(page)).toEqual({ new: 1, duplicate: 0, otherDomain: 0, unreadable: 0 })
+      await importButton(page).click()
+      await expect(toastText(page).first()).toContainText('Imported 1 report (5 messages)')
+      await openTab(page, 'Reports')
+      await expect(cell(imports(page), 2)).toHaveText('5')
+    })
+  }
+
+  test('a report with one rejected row and one good row still imports the good one', async ({ page }) => {
     await addDomain(page, 'example.com')
     await openTab(page, 'Reports')
-    await chooseFiles(page, reportFile('rejected-row.xml', oddReport('b', '1.5')))
-    await expect(page.locator('.issues')).toContainText('Invalid message count "1.5"; row skipped.') // true today
-    expect(await validation(page)).toMatchObject({ new: 0 })
+    const two = oddReport('d', '1.5').replace('</feedback>', oddReport('d', '7').match(/<record>.*<\/record>/)![0] + '</feedback>')
+    await chooseFiles(page, reportFile('half.xml', two))
+    await expect(page.locator('.issues')).toContainText('Invalid message count "1.5"; row skipped.')
+    await expect(page.locator('.issues')).not.toContainText('was rejected, so none')
+    expect(await validation(page)).toEqual({ new: 1, duplicate: 0, otherDomain: 0, unreadable: 0 })
+    await importButton(page).click()
+    await expect(toastText(page).first()).toContainText('Imported 1 report (7 messages)')
   })
 
   // https://github.com/AryanKansagara/dmarc-desk/issues/6

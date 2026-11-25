@@ -103,6 +103,12 @@ export function parseAggregate(xml: string): { report: Report | null; issues: Is
       spf: kids(auth, 'spf').map(s => ({ domain: normDomain(txt(s, 'domain')), scope: txt(s, 'scope') || 'mfrom', result: res(txt(s, 'result')) })),
     })
   }
+  // Every row was rejected: nothing in this file can be counted. Offering it as a new report would import an empty one
+  // and make a corrected copy with the same id show up as a duplicate.
+  if (recs.length && !report.rows.length) {
+    issues.push({ line: fb.line, level: 'error', msg: `All ${recs.length} row${recs.length > 1 ? 's were' : ' was'} rejected, so none of this report can be counted. Fix the rows and import it again.` })
+    return { report: null, issues }
+  }
   if (!domain || !begin) return { report: null, issues }
   return { report, issues }
 }
