@@ -4,19 +4,23 @@
 
 export interface Unpacked { name: string; text: string }
 
-async function inflate(data: Uint8Array, format: 'gzip' | 'deflate-raw'): Promise<Uint8Array> {
-  const stream = new Blob([data as BlobPart]).stream().pipeThrough(new DecompressionStream(format))
-  return new Uint8Array(await new Response(stream).arrayBuffer())
+/** What the user is told when the browser's DecompressionStream gives up: its own text is a network error ("Failed to fetch") or empty. */
+const damaged = (what: string) => new Error(`${what} is damaged or cut short`)
+
+async function inflate(data: Uint8Array, format: 'gzip' | 'deflate-raw', what: string): Promise<Uint8Array> {
+  try {
+    const stream = new Blob([data as BlobPart]).stream().pipeThrough(new DecompressionStream(format))
+    return new Uint8Array(await new Response(stream).arrayBuffer())
+  } catch { throw damaged(what) }
 }
 
 // Some senders (Mimecast) append a stray CRLF after the gzip trailer, which DecompressionStream rejects
 // as junk. Retry with up to 16 trailing bytes trimmed before giving up.
 async function gunzip(data: Uint8Array): Promise<Uint8Array> {
-  let first: unknown
   for (let k = 0; k <= 16 && k < data.length - 18; k++) {
-    try { return await inflate(k ? data.subarray(0, data.length - k) : data, 'gzip') } catch (e) { first ??= e }
+    try { return await inflate(k ? data.subarray(0, data.length - k) : data, 'gzip', 'The gzip file') } catch { /* try with fewer trailing bytes */ }
   }
-  throw first instanceof Error && first.message ? first : new Error('Corrupt gzip data')
+  throw damaged('The gzip file')
 }
 
 const dec = new TextDecoder()
@@ -38,7 +42,7 @@ export async function unpack(name: string, bytes: Uint8Array, depth = 0): Promis
   const out: Unpacked[] = []
   for (const e of zipEntries(bytes)) {
     if (e.name.endsWith('/')) continue
-    const raw = e.method === 0 ? e.data : e.method === 8 ? await inflate(e.data, 'deflate-raw') : null
+    const raw = e.method === 0 ? e.data : e.method === 8 ? await inflate(e.data, 'deflate-raw', `The zip entry ${e.name}`) : null
     if (!raw) throw new Error(`${e.name}: unsupported zip compression method ${e.method}`)
     out.push(...await unpack(e.name, raw, depth + 1))
   }
