@@ -16,6 +16,7 @@ export function GradeCard({ check, compact = false }: { check: DomainCheck; comp
           <code className="grade-domain">{check.domain}</code>
           <div className="small muted">{check.score}/100 · {check.via === 'Synthetic zone' ? 'synthetic zone, no network' : `via ${check.via} DNS-over-HTTPS`}</div>
           {check.capped && <div className="small warn-text">{check.capped}</div>}
+          {!!check.unchecked?.length && !check.capped && <div className="small warn-text">{check.unchecked.join(', ')} could not be checked and {check.unchecked.length > 1 ? 'are' : 'is'} left out of the score.</div>}
         </div>
       </div>
       <ul className="checks">
@@ -42,11 +43,19 @@ function SpfTree({ n, depth = 0 }: { n: SpfNode; depth?: number }) {
 
 export default function DnsTab({ project, update }: TabProps) {
   const [busy, setBusy] = useState(false)
+  // Why the last check failed, kept in the page: the toast is gone after a few seconds.
+  const [failure, setFailure] = useState<string | null>(null)
   const [sel, setSel] = useState(project.selectors.join(', '))
   const c = project.dns
+  const report = (e: unknown) => {
+    const msg = `DNS check failed: ${e instanceof Error ? e.message : String(e)}. Your network may block DNS-over-HTTPS.`
+    setFailure(msg)
+    toast(msg, { tone: 'error' })
+  }
   const run = async () => {
     setBusy(true)
-    try { await runDnsCheck(project) } catch (e) { toast(`DNS check failed: ${(e as Error).message}. Your network may block DNS-over-HTTPS.`, { tone: 'error' }) } finally { setBusy(false) }
+    setFailure(null)
+    try { await runDnsCheck(project) } catch (e) { report(e) } finally { setBusy(false) }
   }
   useEffect(() => { if (!c && !busy) void run() }, [project.id])
 
@@ -56,10 +65,11 @@ export default function DnsTab({ project, update }: TabProps) {
         <p className="muted small" style={{ margin: 0 }}>{project.sampleId ? 'Sample domain: checks run against a synthetic zone that matches its reports.' : 'Live lookups from your browser over DNS-over-HTTPS (Cloudflare 1.1.1.1, Google 8.8.8.8 as fallback).'}{c && <> Last checked {fmtDate(c.at)} {new Date(c.at).toLocaleTimeString()}.</>}</p>
         <button type="button" className="btn primary sm" disabled={busy} onClick={run}>{busy ? 'Checking' : c ? 'Check again' : 'Run check'}</button>
       </div>
-      {!c ? <div className="boot"><span className="spinner" /> Querying DNS for {project.domain}</div> : (
+      {failure && !busy && <p className="error" role="alert" style={{ marginTop: 0 }}>{failure}{c && ' The results below are from the last successful check.'}</p>}
+      {!c ? (failure && !busy ? null : <div className="boot"><span className="spinner" /> Querying DNS for {project.domain}</div>) : (
         <div className="dns-layout">
           <aside><div className="panel corners"><GradeCard check={c} /></div>
-            <form className="panel" onSubmit={e => { e.preventDefault(); void update({ selectors: sel.split(/[\s,]+/).filter(Boolean) })?.then(p => p && runDnsCheck(p)) }}>
+            <form className="panel" onSubmit={e => { e.preventDefault(); void update({ selectors: sel.split(/[\s,]+/).filter(Boolean) })?.then(p => p && runDnsCheck(p)).then(() => setFailure(null), report) }}>
               <label className="field"><span>Extra DKIM selectors</span><input value={sel} onChange={e => setSel(e.target.value)} placeholder="e.g. 20240101pm, mg, sel2025" /></label>
               <p className="tiny muted">We try {36} common selectors plus any your reports show. Postmark, SES and some others use generated selectors: copy them from the provider.</p>
               <button className="btn ghost sm">Save and re-check</button>
@@ -68,7 +78,7 @@ export default function DnsTab({ project, update }: TabProps) {
           <div>
             {c.sections.map(s => (
               <div key={s.id} className={`panel check-panel st-${s.status}`}>
-                <div className="panel-head"><h2><span className="st" aria-hidden="true">{ICON[s.status]}</span> {s.title}</h2><span className="small muted">{s.summary} · {s.points}/{s.max}</span></div>
+                <div className="panel-head"><h2><span className="st" aria-hidden="true">{ICON[s.status]}</span> {s.title}</h2><span className="small muted">{s.summary} · {s.unchecked ? 'not graded' : `${s.points}/${s.max}`}</span></div>
                 {s.record && <Code code={s.record} label={s.id === 'spf' ? `TXT ${c.domain}` : s.id === 'dmarc' ? `TXT _dmarc.${c.domain}` : s.id === 'mta-sts' ? `TXT _mta-sts.${c.domain}` : s.id === 'tls-rpt' ? `TXT _smtp._tls.${c.domain}` : `TXT default._bimi.${c.domain}`} />}
                 {s.id === 'spf' && c.spf.tree && c.spf.tree.children.length > 0 && <details className="spf-tree"><summary>Include tree ({c.spf.lookups} lookups)</summary><ul><SpfTree n={c.spf.tree} /></ul></details>}
                 {s.id === 'dkim' && c.dkim.length > 0 && <div className="table-wrap"><table><thead><tr><th>Selector</th><th>Type</th><th>Key</th><th>Status</th></tr></thead><tbody>{c.dkim.map(k => <tr key={k.selector}><td><code>{k.selector}._domainkey</code></td><td>{k.keyType}</td><td>{k.bits ? `${k.bits}-bit` : '—'}</td><td>{k.revoked ? 'revoked' : k.testing ? 'testing' : 'active'}</td></tr>)}</tbody></table></div>}
